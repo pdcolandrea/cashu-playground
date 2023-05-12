@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Deposit {
+  id Int @id @default(autoincrement())
+  // LNInvoiceID LNInvoice @relation(fields: [ln_invoice], references: [hash])
+
+  ln_invoice Int
+  paid       Boolean
+}
+
+model LNInvoice {
+  pr     String
+  hash   String   @id
+  amount Int
+  status String
+  memo   String?
+  date   DateTime @default(now())
+  // Deposit Deposit[]
+}
+
+model Proof {
+  id     String @id
+  amount Int
+  secret String
+  C      String
+}
+
+model Token {
+  id     Int      @id @default(autoincrement())
+  amount Int
+  status String
+  date   DateTime @default(now())
+  token  String
+  
+  mint  String?
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:.\\dev.db"
+}
