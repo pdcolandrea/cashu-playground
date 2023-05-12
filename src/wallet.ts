@@ -1,30 +1,200 @@
-import { CashuMint, CashuWallet } from "@cashu/cashu-ts";
+import {
+  CashuMint,
+  CashuWallet,
+  getDecodedToken,
+  getEncodedToken,
+} from "@cashu/cashu-ts";
 import * as storage from "../crud";
+import { showInvoiceQR } from "../util";
 
 export const MINT_URL = "https://8333.space:3338";
 export const wallet = new CashuWallet(new CashuMint(MINT_URL));
 
 export default class Cashi {
   balance = 0;
+  txCount = 0;
 
-  constructor() {}
+  constructor() {
+    this.initStorage();
+  }
 
   initStorage = async () => {
     const proofs = await storage.getProofs();
+    const txs = await storage.getAllTokens();
     this.balance = proofs.reduce((prev, curr) => prev + curr.amount, 0);
+    this.txCount = txs.length;
   };
 
-  depositLN = async () => {
-    // fund db using LN
-  };
-  withdrawLN = async () => {
-    // send to LN Invoice
+  rescanInvoices = async () => {};
+
+  rescanProofs = async () => {
+    const proofs = await storage.getPendingProofs();
+
+    // proofs that have not been claimed
+    const newProofs = await wallet.checkProofsSpent(proofs);
+    console.log(JSON.stringify(newProofs));
+    for (const p of newProofs) {
+      console.log(`FOUND PROOF P TO DELETE: ${p.id}`);
+      await storage.deleteSingleProof(p.id);
+    }
   };
 
-  depositECash = async () => {
-    // fund db using ECash string
+  // fund db using LN
+  depositLN = async (amount: number) => {
+    const lnInvoice = await this.generateLNInvoice(amount);
+
+    let retries = 20;
+    const timer = setInterval(async () => {
+      console.log(`Searching for hash: ${lnInvoice.hash}. ${retries} retries`);
+      const encoded = await this.checkInvoiceHasBeenPaid(
+        amount,
+        lnInvoice.hash
+      );
+      if (encoded || retries === 0) {
+        clearInterval(timer);
+      }
+      retries -= 1;
+    }, 5000);
   };
-  withdrawECash = async () => {
-    // send funds using ECash string
+
+  // send to LN Invoice
+  withdrawLN = async (invoice: string) => {
+    const proofs = await storage.getProofs();
+    const tx = await wallet.payLnInvoice(invoice, proofs);
+    console.log(JSON.stringify(tx));
+    return tx;
+  };
+
+  // fund db using ECash string
+  depositECash = async (cashu: string) => {
+    const { token } = await wallet.receive(cashu);
+    console.log(JSON.stringify(token));
+
+    if (!token.token[0]) {
+      throw new Error("Missing token elements");
+    }
+
+    // could try this instead of receive
+    const t = getDecodedToken(cashu);
+    console.log("not using t:");
+    console.log(JSON.stringify(t));
+
+    for (const p of token.token[0].proofs) {
+      await Promise.all([
+        storage.insertProof({
+          amount: p.amount,
+          C: p.C,
+          id: p.id,
+          secret: p.secret,
+        }),
+        storage.insertToken({
+          amount: p.amount,
+          status: "paid",
+          mint: MINT_URL,
+          token: cashu,
+        }),
+      ]);
+    }
+
+    return token;
+  };
+
+  // send funds using ECash string
+  withdrawECash = async (amount: number) => {
+    const proofs = await storage.getProofs();
+    const { returnChange, send } = await wallet.send(amount, proofs);
+
+    console.log(JSON.stringify(returnChange));
+    console.log(JSON.stringify(send));
+
+    const encoded = getEncodedToken({
+      token: [
+        {
+          mint: MINT_URL,
+          proofs: send,
+        },
+      ],
+    });
+
+    console.log({ encoded });
+
+    // TODO: THINK I HAVE TO STORE PROOFS (RETURN CHANGE?)
+
+    await storage.insertToken({
+      amount: amount * -1,
+      status: "pending",
+      token: encoded,
+      mint: MINT_URL,
+    });
+
+    // let retries = 20;
+    // const timer = setInterval(async () => {
+    //   console.log(`Searching for hash: ${lnInvoice.hash}. ${retries} retries`);
+    //   const encoded = await this.checkInvoiceHasBeenPaid(
+    //     amount,
+    //     lnInvoice.hash
+    //   );
+    //   if (encoded || retries === 0) {
+    //     clearInterval(timer);
+    //   }
+    //   retries -= 1;
+    // }, 5000);
+
+    return encoded;
+    // start rescanProofs
+  };
+
+  // util
+  generateLNInvoice = async (amount: number) => {
+    const { pr, hash } = await wallet.requestMint(amount);
+    console.log(`[requestMint] Pay this invoice for ${amount} sat: `, {
+      pr,
+      hash,
+    });
+    showInvoiceQR(pr);
+
+    await storage.insertLNInvoice({
+      amount,
+      hash,
+      pr,
+      status: "pending",
+    });
+
+    return { pr, hash };
+  };
+
+  /**
+   *
+   * @param amount
+   * @param hash
+   * @ ECASH that can be spent
+   */
+  checkInvoiceHasBeenPaid = async (amount: number, hash: string) => {
+    try {
+      // if we pass here - invoice was paid
+      const { proofs, newKeys } = await wallet.requestTokens(amount, hash);
+      await storage.updateLNInvoice(hash, { status: "paid" });
+
+      for (const p of proofs) {
+        await storage.insertProof({
+          amount: amount,
+          C: p.C,
+          id: p.id,
+          secret: p.secret,
+        });
+      }
+
+      console.log(JSON.stringify(newKeys));
+
+      const encoded = getEncodedToken({
+        token: [{ mint: MINT_URL, proofs: proofs }],
+      });
+      console.log({ encoded });
+      await storage.insertToken({ amount, status: "paid", token: encoded });
+      return encoded;
+    } catch (err) {
+      console.log("Waiting on LN invoice to be paid");
+      // console.error(err);
+    }
   };
 }

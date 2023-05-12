@@ -1,9 +1,7 @@
 import { Proof, getDecodedToken, getEncodedToken } from "@cashu/cashu-ts";
 import * as storage from "./crud";
-import { MINT_URL, wallet } from "./src/wallet";
+import Cashi, { MINT_URL, wallet } from "./src/wallet";
 import { showInvoiceQR } from "./util";
-import { sendECash } from "./src/send";
-import { receiveECash } from "./src/receive";
 
 const generateInvoice = async (amount: number) => {
   const { pr, hash } = await wallet.requestMint(amount);
@@ -101,9 +99,12 @@ async function App() {
   // await rescanProofs(p);
   // await sendToken(1, p);
 
-  const t =
-    "cashuAeyJ0b2tlbiI6W3sibWludCI6Imh0dHBzOi8vODMzMy5zcGFjZTozMzM4IiwicHJvb2ZzIjpbeyJpZCI6IkkyeU4raVJZZmt6VCIsImFtb3VudCI6MSwic2VjcmV0IjoiSnhHUUhHZmM5UTFkTDdQQjZYaEFReUVyZllUWStObWYyQnpsTElxOTdjRT0iLCJDIjoiMDI0ZDBjMWMxMThjZjMxYWYxN2EzZTM1MDFhZDFkYWU1ZTljYmM5ODcxZTVjOWRiYjZhYTZkMThjOTQ1Zjc1NGZkIn1dfV19";
-  console.log(JSON.stringify(getDecodedToken(t)));
+  // const t =
+  //   "cashuAeyJ0b2tlbiI6W3sibWludCI6Imh0dHBzOi8vODMzMy5zcGFjZTozMzM4IiwicHJvb2ZzIjpbeyJpZCI6IkkyeU4raVJZZmt6VCIsImFtb3VudCI6MSwic2VjcmV0IjoiSnhHUUhHZmM5UTFkTDdQQjZYaEFReUVyZllUWStObWYyQnpsTElxOTdjRT0iLCJDIjoiMDI0ZDBjMWMxMThjZjMxYWYxN2EzZTM1MDFhZDFkYWU1ZTljYmM5ODcxZTVjOWRiYjZhYTZkMThjOTQ1Zjc1NGZkIn1dfV19";
+  // console.log(JSON.stringify(getDecodedToken(t)));
+  const wa = new Cashi();
+  await wa.rescanProofs();
+  // const d = await wa.withdrawECash(1);
 }
 
 App();

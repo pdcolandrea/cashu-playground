@@ -28,6 +28,7 @@ model Proof {
   amount Int
   secret String
   C      String
+  status String @default("pending")
 }
 
 model Token {
@@ -36,8 +37,8 @@ model Token {
   status String
   date   DateTime @default(now())
   token  String
-  
-  mint  String?
+
+  mint String?
 }
 
 datasource db {
